@@ -36,6 +36,20 @@ module_relu = torch.nn.ReLU()(random_tensor)
 ### Task: Delete the call to `replace_all_uses_with` to verify that FX will report a RuntimeError.
 **Result:**
 ![](./img/lab0_task1.png)
+
+### Task: Remove the `attention_mask` and `labels` arguments from the `hf_input_names` list and re-run the following cell. Use `mg.draw()` to visualize the graph in each case. Can you see any changes in the graph topology? Can you explain why this happens?
+
+[click for full figure: 1 inputs](./img/lab0_tutorial_2_task_1_removed.svg)
+[click for full figure: 3 inputs](./img/lab0_tutorial_2_task_1_full.svg)
+
+**Compering:**
+![](./img/laba0_tutorial_2_task_1_compare_1.png)
+The aboved figure shows the 3 inputs graph will include a crossentropy module which allow the modole to output the loss by passing the `labels`.
+
+![](./img/laba0_tutorial_2_task_1_compare_2.png)
+The aboved figure shows the 3 inputs graph will include a input for the attention mask which will be usfull when **training in a batch**.
+
+Therefore, I know that 3 input is required for traning, but 1 input is for inference.
 ## Lab 1
 
 ## Lab 2
