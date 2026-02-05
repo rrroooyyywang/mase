@@ -52,6 +52,16 @@ The aboved figure shows the 3 inputs graph will include a input for the attentio
 Therefore, I know that 3 input is required for traning, but 1 input is for inference.
 ## Lab 1
 
+## Task 1:
+In Tutorial 3, you quantized every Linear layer in the model to the provided configuration. Now, explore a range of fixed point widths from 4 to 32.
+
+- a: Plot a figure where the x-axis is the fixed point width and the y-axis is the highest achieved accuracy on the IMDb dataset, following the procedure in Tutorial 3.
+
+![](./img/lab1_tutorial_3_task_1_a.png)
+
+- b. Plot separate curves for PTQ and QAT at each precision to show the effect of post-quantization finetuning.
+
+![](./img/lab1_tutorial_3_task_1_b.png)
 ## Lab 2
 
 ## Lab 3
