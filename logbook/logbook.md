@@ -52,7 +52,7 @@ The aboved figure shows the 3 inputs graph will include a input for the attentio
 Therefore, I know that 3 input is required for traning, but 1 input is for inference.
 ## Lab 1
 
-## Task 1:
+### Task 1:
 In Tutorial 3, you quantized every Linear layer in the model to the provided configuration. Now, explore a range of fixed point widths from 4 to 32.
 
 - a: Plot a figure where the x-axis is the fixed point width and the y-axis is the highest achieved accuracy on the IMDb dataset, following the procedure in Tutorial 3.
@@ -62,6 +62,210 @@ In Tutorial 3, you quantized every Linear layer in the model to the provided con
 - b. Plot separate curves for PTQ and QAT at each precision to show the effect of post-quantization finetuning.
 
 ![](./img/lab1_tutorial_3_task_1_b.png)
+
+```python
+import matplotlib.pyplot as plt
+import chop.passes as passes
+
+def quant_train_sweep(int_widths=range(4, 32),frac_rule=lambda w: w // 2,qat_epochs=1):
+
+    ptq_accs = []
+    qat_accs = []
+
+    for int_width in int_widths:
+        int_frac = frac_rule(int_width)
+        print(f"\n=== width={int_width}, frac={int_frac} ===")
+
+        # PTQ
+        mg = MaseGraph.from_checkpoint(
+            "/home/roy/Documents/STUDY/IC/YEAR4_TERM2/ADLS/mase/lab0/tutorial_2_lora"
+        )
+        trainer_ptq = get_trainer(
+            model=mg.model,
+            tokenized_dataset=dataset,
+            tokenizer=tokenizer,
+            evaluate_metric="accuracy",
+        )
+
+        print(f"[PTQ] Quantizing (width={int_width}, frac={int_frac}) then evaluate...")
+        quantization_config_ptq = quant_config(int_width=int_width, int_frac_width=int_frac)
+        mg_ptq, _ = passes.quantize_transform_pass(mg, pass_args=quantization_config_ptq)
+
+        trainer_ptq.model = mg_ptq.model
+        ptq_eval = trainer_ptq.evaluate()
+        ptq_acc = ptq_eval["eval_accuracy"]
+        print(f"[PTQ] eval_accuracy = {ptq_acc:.6f}")
+        ptq_accs.append(ptq_acc)
+
+        # QAT
+        mg2 = MaseGraph.from_checkpoint(
+            "/home/roy/Documents/STUDY/IC/YEAR4_TERM2/ADLS/mase/lab0/tutorial_2_lora"
+        )
+        trainer_qat = get_trainer(
+            model=mg2.model,
+            tokenized_dataset=dataset,
+            tokenizer=tokenizer,
+            evaluate_metric="accuracy",
+        )
+
+        print(f"[QAT] Quantizing then finetune for {qat_epochs} epoch(s)...")
+        quantization_config_qat = quant_config(int_width=int_width, int_frac_width=int_frac)
+        mg_qat, _ = passes.quantize_transform_pass(mg2, pass_args=quantization_config_qat)
+        
+        trainer_qat.model = mg_qat.model
+        device = trainer_qat.args.device
+        trainer_qat.model.to(device)
+        trainer_qat.model.train()
+        trainer_qat.train()
+
+
+        qat_eval = trainer_qat.evaluate()
+        best_acc = qat_eval["eval_accuracy"]
+
+        print(f"[QAT] best achieved accuracy = {best_acc:.6f}")
+        qat_accs.append(best_acc)
+
+    plt.figure(figsize=(10, 6))
+    plt.plot(list(int_widths), ptq_accs, marker="o", label="PTQ (eval after quant)")
+    plt.plot(list(int_widths), qat_accs, marker="o", label=f"QAT (finetune {qat_epochs} ep, best achieved)")
+    plt.title("PTQ vs QAT: Accuracy vs Fixed-Point Width")
+    plt.xlabel("Fixed-Point Width (bits)")
+    plt.ylabel("Accuracy")
+    plt.xticks(list(int_widths))
+    plt.grid(True)
+    plt.legend()
+    plt.show()
+
+    return ptq_accs, qat_accs
+
+```
+
+### Task 2:
+Take your best obtained model from Task 1 and rerun the pruning procedure, this time varying the sparsity from 0.1 to 0.9.
+
+- a: Plot a figure where the x-axis is the sparsity and the y-axis is the highest achieved accuracy on the IMDb dataset, following the procedure in Tutorial 4.
+![](./img/lab1_tutorial_3_task_2_a.png)
+- b: Plot separate curves for Random and L1-Norm methods to evaluate the effect of different pruning strategies.
+![](./img/lab1_tutorial_3_task_2_b.png)
+
+```python
+import matplotlib.pyplot as plt
+import torch
+import chop.tools as tools
+def pruning_config(sparsity, method="l1-norm", scope="local"):
+    return {
+        "weight": {
+            "sparsity": sparsity,
+            "method": method,
+            "scope": scope,
+        },
+        "activation": {
+            "sparsity": sparsity,
+            "method": method,
+            "scope": scope,
+        },
+    }
+
+def get_best_accuracy(trainer):
+    best_acc = None
+
+    trainer.train()
+
+    if hasattr(trainer, "state") and hasattr(trainer.state, "log_history"):
+        for rec in trainer.state.log_history:
+            if "eval_accuracy" in rec:
+                best_acc = (
+                    rec["eval_accuracy"]
+                    if best_acc is None
+                    else max(best_acc, rec["eval_accuracy"])
+                )
+
+    if best_acc is None:
+        best_acc = trainer.evaluate()["accuracy"]
+
+    return best_acc
+
+
+def sparsity_sweep(batch_size=8, log_path="pruning_results.txt"):
+    sparsity_list = [i / 10 for i in range(1, 9)]
+    random_accuracies = []
+    l1_accuracies = []
+
+    with open(log_path, "a") as f:
+
+        print("Random pruning sweep...")
+        for sparsity in sparsity_list:
+            print(f"[Random] sparsity={sparsity}")
+
+            mg = MaseGraph.from_checkpoint(
+                "/home/roy/Documents/STUDY/IC/YEAR4_TERM2/ADLS/mase/lab1/tutorial_3_qat"
+            )
+            mg, _ = passes.prune_transform_pass(
+                mg, pass_args=pruning_config(sparsity, method="random")
+            )
+
+            trainer = tools.get_trainer(
+                model=mg.model,
+                tokenized_dataset=dataset,
+                tokenizer=tokenizer,
+                evaluate_metric="accuracy",
+                num_train_epochs=5,
+                train_batch_size=batch_size,
+            )
+
+            device = torch.device("cuda:0")
+            trainer.model.to(device)
+            trainer.train()
+
+            acc = trainer.evaluate()["eval_accuracy"]
+            random_accuracies.append(acc)
+
+            f.write(f"random {sparsity:.1f} {acc:.6f}\n")
+            f.flush()
+
+        print("L1-Norm pruning sweep...")
+        for sparsity in sparsity_list:
+            print(f"[L1] sparsity={sparsity}")
+
+            mg = MaseGraph.from_checkpoint(
+                "/home/roy/Documents/STUDY/IC/YEAR4_TERM2/ADLS/mase/lab1/tutorial_3_qat"
+            )
+            mg, _ = passes.prune_transform_pass(
+                mg, pass_args=pruning_config(sparsity, method="l1-norm")
+            )
+
+            trainer = tools.get_trainer(
+                model=mg.model,
+                tokenized_dataset=dataset,
+                tokenizer=tokenizer,
+                evaluate_metric="accuracy",
+                num_train_epochs=5,
+                train_batch_size=batch_size,
+            )
+
+            device = torch.device("cuda:0")
+            trainer.model.to(device)
+            trainer.train()
+
+            acc = trainer.evaluate()["eval_accuracy"]
+            l1_accuracies.append(acc)
+
+            f.write(f"l1-norm {sparsity:.1f} {acc:.6f}\n")
+            f.flush()
+
+    plt.figure(figsize=(10, 6))
+    plt.plot(sparsity_list, random_accuracies, marker="o", label="Random pruning")
+    plt.plot(sparsity_list, l1_accuracies, marker="o", label="L1-Norm pruning")
+    plt.xlabel("Sparsity")
+    plt.ylabel("Accuracy")
+    plt.title("Pruning Sparsity vs Accuracy (IMDb)")
+    plt.grid(True)
+    plt.legend()
+    plt.show()
+
+    return sparsity_list, random_accuracies, l1_accuracies
+
+```
 ## Lab 2
 
 ## Lab 3

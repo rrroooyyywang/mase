@@ -104,6 +104,7 @@ def get_trainer(
     use_mps_device: bool = False,
     report_to: str = "none",
     num_train_epochs: int = 1,
+    train_batch_size=8,
 ):
     """
     Returns a Trainer object for a given model and tokenized dataset.
@@ -152,6 +153,8 @@ def get_trainer(
         use_mps_device=use_mps_device,
         report_to=report_to,
         num_train_epochs=num_train_epochs,
+        per_device_train_batch_size=train_batch_size,
+
     )
 
     trainer = Trainer(
