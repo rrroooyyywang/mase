@@ -160,6 +160,7 @@ Plot separate curves for Random and L1-Norm methods to evaluate the effect of di
 We observed that the random pruning reduce the accuracy a lot without finetuning. But after finetuning the accuracy increase a lot but it will not exceed L1-pruning with finetuning.
 
 The L1-pruning has the best result overall. Even without finetuning the accuracy dose not drop a lot, only when sparsity higher than 0.5, i.e. prune half of the weights. And L1-pruning can retain accuracy a lot after finetuning.
+
 ```python
 import matplotlib.pyplot as plt
 import torch
@@ -455,7 +456,7 @@ BertForSequenceClassification(
 ```
 
 This is the plot of the search trails:
-![](../lab3/precision_comparison_best_so_far.png)
+![](./img/precision_comparison_best_so_far.png)
 
 ## Lab 4
 
@@ -526,7 +527,7 @@ The fusion dose increase the speed a lot. And compare GPU to CPU, the speed incr
 #### Section b
 **Q:** What is the purpose of the variable dont_need_abs and bias in the C++ for loop?
 
-**A:** The FP in IEEE assume the mantissa has leading one, but MXINT does not garunteen. The dont_need_abs indicate if the leading one exits in mantissa. If it exit it is the same as FP IEEE, but if not, we need to removed the leading on introduced while using FP IEEE conversion.
+**A:** The FP in IEEE assume the mantissa has leading one, but MXINT does not guarantee. The dont_need_abs indicate if the leading one exits in mantissa. If it exit it is the same as FP IEEE, but if not, we need to removed the leading on introduced while using FP IEEE conversion.
 
 #### Section c
 **Q:** How does `cta_tiler` partition the data for copy?
