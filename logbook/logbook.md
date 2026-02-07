@@ -295,7 +295,8 @@ In file [mps.py](../lab3/mps.py)
 ## Lab 4
 
 ### Task 1:
-- case: CPU
+
+#### case: CPU
 
 Original model: `0.9344 s`
 
@@ -309,7 +310,7 @@ much slower! The possible reasons:
 
 3) torch.compile is jit compilation. This intruduced compilation overhead for each bytecode executaion.
 
-- case: GPU
+#### case: GPU
 
 GPU Original model: `0.0411 s`
 
@@ -320,7 +321,7 @@ even much more slower! The possible reasons:
 
 2) Maybe there are other threads are using the GPU and the GPU is too busy to run the trail.
 
-- case: after warmup
+#### case: after warmup
 After the two initila trail, I ran it again in notebook, the result is much better.
 
 CPU Original model: `0.9321 s`
