@@ -146,10 +146,10 @@ if __name__ == "__main__":
         return_tokenizer=True,
     )
     search_space = {
-        "num_layers": [2, 4, 8],
-        "num_heads": [2, 4, 8, 16],
-        "hidden_size": [128, 192, 256, 384, 512],
-        "intermediate_size": [512, 768, 1024, 1536, 2048],
+        "num_layers": [8,4,2],
+        "num_heads": [16, 8, 4, 2],
+        "hidden_size": [512, 384, 256, 192, 128],
+        "intermediate_size": [2048, 1536, 1024, 768, 512],
         "linear_layer_choices": [
             nn.Linear,
             Identity,

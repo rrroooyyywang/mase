@@ -4,9 +4,9 @@ import numpy as np
 import matplotlib.pyplot as plt
 
 RESULT_FILES = {
-    "Random": "results_random_1.txt",
-    "TPE": "results_tpe_1.txt",
-    "Grid": "results_grid_1.txt",
+    "Random": "results_random_2.txt",
+    "TPE": "results_tpe_2.txt",
+    "Grid": "results_grid.txt",
 }
 
 # Output figure

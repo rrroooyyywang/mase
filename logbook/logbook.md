@@ -269,16 +269,89 @@ def sparsity_sweep(batch_size=8, log_path="pruning_results.txt"):
 ## Lab 2
 ### Task 1
 Tutorial 5 shows how to use random search to find the optimal configuration of hyperparameters and layer choices for the Bert model.
-- a: Now, explore using the GridSampler and TPESampler in Optuna.
+#### Section a
+Explore using the GridSampler and TPESampler in Optuna.
+
 In file [nas.py](../lab2/nas.py)
-- b: Plot a figure that has the number of trials on the x axis, and the maximum achieved accuracy up to that point on the y axis. Plot one curve for each sampler to compare their performance.
-![](./img/lab2_task1_b.png)
+#### Section b
+Plot a figure that has the number of trials on the x axis, and the maximum achieved accuracy up to that point on the y axis. Plot one curve for each sampler to compare their performance.
+![](./img/lab2_task1_b_1.png)
+
+From the graph, grid search achieves the highest final accuracy. However, grid search exhaustively evaluates all discretized points in the search space, which makes it impractical for large-scale neural architecture search (NAS). The strong performance observed here is highly dependent on the specific discretization and layout of the search space. Under an unfavorable alignment, grid search may only discover high-performing configurations at the end of the search. In principle, grid search exhibits a worst-case sample complexity of Θ(N).
+
+Among the non-exhaustive methods, the TPE sampler achieves the best empirical performance. It reaches higher accuracy than random search within a small number of trials and consistently maintains this advantage throughout the optimization process. While TPE does not provide a better worst-case complexity guarantee and may degenerate to random search, it significantly improves sample efficiency in practice by exploiting the structure of the objective function.
+
+Random search may occasionally sample high-performing configurations early due to randomness. However, in the worst case, it may require evaluating all possible configurations to identify the optimal solution. Therefore, its worst-case sample complexity is also Θ(N).
+
+
+
 ### Task 2
 In Tutorial 5, NAS is used to find an optimal configuration of hyperparameters, then we use the CompressionPipeline in Mase to quantize and prune the model after search is finished. However, the final compressed model may not be optimal, since different model architectures may have different sensitivities to quantization and pruning. Ideally, we want to run a compression-aware search flow, where the quantization and pruning is considered in each trial.
 
-- a: In the objective function, after the model is constructed and trained for some iterations, call the CompressionPipeline to quantize and prune the model, then continue training for a few more epochs. Use the sampler that yielded the best results in Task 1 to run the compression-aware search. The objective function should return the final accuracy of the model after compression. Consider also the case where final training is performed after quantization/pruning.
+#### Section a
+```python
+    def objective(trial: optuna.Trial):
+        model = construct_model(trial)
 
-- b: Plot a new figure that has the number of trials on the x axis, and the maximum achieved accuracy up to that point on the y axis. There should be three curves: 1. the best performance from Task 1 (without compression), compression-aware search without post-compression training, and compression-aware search with post-compression training.
+        trainer_pre = get_trainer(
+            model=model,
+            tokenized_dataset=dataset,
+            tokenizer=tokenizer,
+            evaluate_metric="accuracy",
+            num_train_epochs=PRE_COMPRESSION_EPOCHS,
+        )
+        trainer_pre.train()
+        model = trainer_pre.model
+        model.to("cpu")
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
+        mg = MaseGraph(
+            model,
+            hf_input_names=[
+                "input_ids",
+                "attention_mask",
+                "labels",
+            ],
+        )
+        pipe = CompressionPipeline()
+        qcfg = copy.deepcopy(QUANTIZATION_CONFIG)
+        pcfg = copy.deepcopy(PRUNING_CONFIG)
+        mg, _ = pipe(
+            mg,
+            pass_args={
+                "quantize_transform_pass": qcfg,
+                "prune_transform_pass": pcfg,
+            },
+        )
+        compressed_model = mg.model
+
+        if post_compression_epochs > 0:
+            trainer_post = get_trainer(
+                model=compressed_model,
+                tokenized_dataset=dataset,
+                tokenizer=tokenizer,
+                evaluate_metric="accuracy",
+                num_train_epochs=post_compression_epochs,
+            )
+            trainer_post.train()
+            eval_results = trainer_post.evaluate()
+        else:
+            trainer_eval = get_trainer(
+                model=compressed_model,
+                tokenized_dataset=dataset,
+                tokenizer=tokenizer,
+                evaluate_metric="accuracy",
+                num_train_epochs=0,
+            )
+            eval_results = trainer_eval.evaluate()
+
+        acc = float(eval_results["eval_accuracy"])
+
+        return acc
+```
+
+#### Section b
+Plot a new figure that has the number of trials on the x axis, and the maximum achieved accuracy up to that point on the y axis. There should be three curves: 1. the best performance from Task 1 (without compression), compression-aware search without post-compression training, and compression-aware search with post-compression training.
 ![](./img/lab2_task2_b.png)
 ## Lab 3
 ### Task 1:
@@ -291,6 +364,86 @@ In file [mps.py](../lab3/mps.py)
 
 ### Task 2:
 ![](./img/lab3_task2.png)
+
+The final best accuracy is `0.87564`.
+The model arch is as follow:
+
+```python
+BertForSequenceClassification(
+  (bert): BertModel(
+    (embeddings): BertEmbeddings(
+      (word_embeddings): Embedding(30522, 384, padding_idx=0)
+      (position_embeddings): Embedding(512, 384)
+      (token_type_embeddings): Embedding(2, 384)
+      (LayerNorm): LayerNorm((384,), eps=1e-12, elementwise_affine=True)
+      (dropout): Dropout(p=0.1, inplace=False)
+    )
+    (encoder): BertEncoder(
+      (layer): ModuleList(
+        (0): BertLayer(
+          (attention): BertAttention(
+            (self): BertSdpaSelfAttention(
+              (query): Identity()
+              (key): LinearBinaryScaling(in_features=384, out_features=384, bias=True)
+              (value): LinearBinaryResidualSign(in_features=384, out_features=384, bias=True)
+              (dropout): Dropout(p=0.1, inplace=False)
+            )
+            (output): BertSelfOutput(
+              (dense): LinearBinary(in_features=384, out_features=384, bias=True)
+              (LayerNorm): LayerNorm((384,), eps=1e-12, elementwise_affine=True)
+              (dropout): Dropout(p=0.1, inplace=False)
+            )
+          )
+          (intermediate): BertIntermediate(
+            (dense): Linear(in_features=384, out_features=2048, bias=True)
+            (intermediate_act_fn): GELUActivation()
+          )
+          (output): BertOutput(
+            (dense): LinearBinary(in_features=2048, out_features=384, bias=True)
+            (LayerNorm): LayerNorm((384,), eps=1e-12, elementwise_affine=True)
+            (dropout): Dropout(p=0.1, inplace=False)
+          )
+        )
+        (1): BertLayer(
+          (attention): BertAttention(
+            (self): BertSdpaSelfAttention(
+              (query): Identity()
+              (key): LinearMinifloatIEEE(in_features=384, out_features=384, bias=True)
+              (value): Identity()
+              (dropout): Dropout(p=0.1, inplace=False)
+            )
+            (output): BertSelfOutput(
+              (dense): LinearLog(in_features=384, out_features=384, bias=True)
+              (LayerNorm): LayerNorm((384,), eps=1e-12, elementwise_affine=True)
+              (dropout): Dropout(p=0.1, inplace=False)
+            )
+          )
+          (intermediate): BertIntermediate(
+            (dense): Linear(in_features=384, out_features=2048, bias=True)
+            (intermediate_act_fn): GELUActivation()
+          )
+          (output): BertOutput(
+            (dense): LinearMinifloatIEEE(in_features=2048, out_features=384, bias=True)
+            (LayerNorm): LayerNorm((384,), eps=1e-12, elementwise_affine=True)
+            (dropout): Dropout(p=0.1, inplace=False)
+          )
+        )
+      )
+    )
+    (pooler): BertPooler(
+      (dense): LinearMinifloatDenorm(in_features=384, out_features=384, bias=True)
+      (activation): Tanh()
+    )
+  )
+  (dropout): Dropout(p=0.1, inplace=False)
+  (classifier): LinearBinaryResidualSign(in_features=384, out_features=2, bias=True)
+)
+
+
+```
+
+This is the plot of the search trails:
+![](../lab3/precision_comparison_best_so_far.png)
 
 ## Lab 4
 
@@ -334,3 +487,56 @@ GPU Optimized model: `0.0213 s`
 
 
 1) The possible case is that the model is being cache inside the device and the comiled path is also cached, no more jit graph break and recompiling happend in the runtime.
+
+### Task 2
+
+- a: rewrite the time_modle function and get_data function. And usd the same qkv for both cpu and gpu. Load to correct device before get_data call.
+- b: The result is as follow:
+
+CPU Original attention: `0.147642 s`
+
+CPU Fused attention: `0.002589 s`
+
+GPU Original attention: `0.000087 s`
+
+GPU Fused attention: `0.000031 s`
+
+The fusion dose increase the speed a lot. And compare GPU to CPU, the speed increases is limited but still double the speed. This may be the memory bendwidth on GPU is much larger than CPU and the speed up infered that the original attention is indeed limited by the memory bottelneck.
+
+### Task 3
+
+#### Section a
+**Q:** How does MXINT8 benefit custom hardware if both the activation and weights in a linear layer are quantized to MXINT8?
+
+**A:** The MXINT8 is much hardware friendly, in two aspect. One is integer computation  is simple in hardware and the other is it redecu the data size and so dose reduce the data throughput for a given memory bendwidth. 
+- In hardware design aspect, the hardware the computation of FP number is much compicated and usually require multiple cycles to complete the computation which reduce the IPS. And large batch of FP computation will result in speed decreasing multiple times. How ever if we use MXINT to quantise FP numbers, the processing elements in tensor core or vector unit can usig integer MAC units which can finish computation in smaller cycles or even in one cycle other than multiple cycles in FP unit.
+- And in dataflow aspect, if the memory width is 32 bits, the effective memory bendwidth will be 4 times larger.
+#### Section b
+**Q:** What is the purpose of the variable dont_need_abs and bias in the C++ for loop?
+
+**A:** The FP in IEEE assume the mantissa has leading one, but MXINT does not garunteen. The dont_need_abs indicate if the leading one exits in mantissa. If it exit it is the same as FP IEEE, but if not, we need to removed the leading on introduced while using FP IEEE conversion.
+
+#### Section c
+**Q:** How does `cta_tiler` partition the data for copy?
+
+**A:** the cta_tiler is used to prepare different section of memory i.e. a tile for different Compute Thread Arrays. While call local_tile, we need to pass the shape for each tile and the cta_tiler is the shape (BLK_M, BLK_K). With it, cta_coor will also being passed to local_tile, this is to indicate the cta location, that is which thread will used the tile. The local_tile dose not copy the data, but only return a Tensor view, i.e. a pointer to the memory section.
+
+**Q:** How does layout_sX partition the threads in a threadblock for computation?
+**A:** layout_sX defines a 2D mapping from threadIdx.x to (m, k) coordinates inside the CTA tile, so that each thread in the block is assigned ownership of exactly one (m, k) element in the shared-memory tile.
+
+#### Section d
+**Q:** Why the saved GPU memory is not exactly (32 - (4+8/32))/32 = 86.7% of the FP32 model?
+**A:** 
+```python
+    for layer_name, layer in model.named_modules():
+        if not isinstance(layer, torch.nn.Linear):
+            continue
+        if "classifier" in layer_name:
+            continue
+        layer.cuda()
+        layer_q = QLinearPacked.build_from_linear(layer, group_size=mxint8_group_size)
+        set_layer_by_name(model, layer_name, layer_q)
+        del layer
+        torch.cuda.empty_cache()
+```
+From this section we know that we are only quantize the torch.nn.Linear layer. There are other layer that are not being quantized for example encoder, pooling and classifer,
