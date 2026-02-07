@@ -288,3 +288,6 @@ In Tutorial 6, all layers allocated to IntegerLinear are allocated the same widt
 In file [mps.py](../lab3/mps.py)
 - b: Run the search again, and plot a figure that has the number of trials on the x axis, and the maximum achieved accuracy up to that point on the y axis.
 ![](./img/lab3_task1.png)
+
+### Task 2:
+![](./img/lab3_task2.png)
