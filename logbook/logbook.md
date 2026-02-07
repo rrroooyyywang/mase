@@ -144,9 +144,9 @@ def quant_train_sweep(int_widths=range(4, 32),frac_rule=lambda w: w // 2,qat_epo
 Take your best obtained model from Task 1 and rerun the pruning procedure, this time varying the sparsity from 0.1 to 0.9.
 
 - a: Plot a figure where the x-axis is the sparsity and the y-axis is the highest achieved accuracy on the IMDb dataset, following the procedure in Tutorial 4.
-![](./img/lab1_tutorial_3_task_2_a.png)
+![](./img/lab1_tutorial_4_task_2_a.png)
 - b: Plot separate curves for Random and L1-Norm methods to evaluate the effect of different pruning strategies.
-![](./img/lab1_tutorial_3_task_2_b.png)
+![](./img/lab1_tutorial_4_task_2_b_2.png)
 
 ```python
 import matplotlib.pyplot as plt
@@ -291,3 +291,45 @@ In file [mps.py](../lab3/mps.py)
 
 ### Task 2:
 ![](./img/lab3_task2.png)
+
+## Lab 4
+
+### Task 1:
+- case: CPU
+
+Original model: `0.9344 s`
+
+Optimized model: `2.5768 s`
+
+much slower! The possible reasons:
+
+1) ResNet-18 is dominated by convolution layers, which are already highly optimized in PyTorch eager mode using oneDNN on CPU. TorchInductor primarily benefits models with heavy pointwise operations or fusion opportunities. For convolution-heavy models, the generated code often cannot outperform optimized vendor libraries.
+
+2) My cpu is Intel i7-12700KF, which has multi cpus. Different execution paths may use different threading strategies. TorchInductor and eager mode can interact differently with OpenMP or oneDNN thread pools, sometimes leading to oversubscription or inefficient core utilization, which can degrade performance.
+
+3) torch.compile is jit compilation. This intruduced compilation overhead for each bytecode executaion.
+
+- case: GPU
+
+GPU Original model: `0.0411 s`
+
+GPU Optimized model: `0.3081 s`
+
+even much more slower! The possible reasons:
+1) During compiling trail, I got some warning as output, this may be due to some overhead happed when the compile run the model.forward in first time, for example. looking for correct liberary and the low level apis (pynvml). And also during the backend searching or loading, the compile decide to used some bad backends.
+
+2) Maybe there are other threads are using the GPU and the GPU is too busy to run the trail.
+
+- case: after warmup
+After the two initila trail, I ran it again in notebook, the result is much better.
+
+CPU Original model: `0.9321 s`
+
+CPU Optimized model: `0.7850 s`
+
+GPU Original model: `0.0214 s`
+
+GPU Optimized model: `0.0213 s`
+
+
+1) The possible case is that the model is being cache inside the device and the comiled path is also cached, no more jit graph break and recompiling happend in the runtime.

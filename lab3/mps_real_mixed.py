@@ -86,6 +86,19 @@ SEARCH_SPACE = {
     "binrs_levels": [2],
     "binrs_residual_sign": [False, True],
 
+    "linear_layer_choices": [
+        torch.nn.Linear,
+        LinearInteger,
+        LinearMinifloatIEEE,
+        LinearMinifloatDenorm,
+        LinearLog,
+        LinearBlockFP,
+        LinearBlockMinifloat,
+        LinearBlockLog,
+        LinearBinary,
+        LinearBinaryScaling,
+        LinearBinaryResidualSign,
+    ],
 }
 
 
@@ -346,15 +359,14 @@ def build_layer_kwargs(trial, layer_name: str, layer_cls, in_features: int, out_
     return filter_kwargs_by_signature(layer_cls, kwargs)
 
 
-def construct_model(trial, layer_cls):
+def construct_model(trial):
     trial_model = deepcopy(base_model)
 
     for name, layer in trial_model.named_modules():
         if not isinstance(layer, torch.nn.Linear):
             continue
 
-        use_quant = trial.suggest_categorical(f"{name}_use_quant", [False, True])
-        chosen_cls = layer_cls if use_quant else torch.nn.Linear
+        chosen_cls = trial.suggest_categorical(f"{name}_type", SEARCH_SPACE["linear_layer_choices"])
 
         if chosen_cls is torch.nn.Linear:
             continue
@@ -370,9 +382,9 @@ def construct_model(trial, layer_cls):
 
     return trial_model
 
-def run_one_precision(precision_name: str, layer_cls, n_trials: int):
+def run_mixed_precisions(n_trials: int):
     def objective(trial):
-        model = construct_model(trial, layer_cls)
+        model = construct_model(trial)
         trainer = get_trainer(
             model=model,
             tokenized_dataset=dataset,
@@ -386,7 +398,7 @@ def run_one_precision(precision_name: str, layer_cls, n_trials: int):
 
     study = optuna.create_study(
         direction="maximize",
-        study_name=f"bert-tiny-{precision_name}",
+        study_name=f"bert-tiny-mixed",
         sampler=TPESampler(),
     )
     study.optimize(objective, n_trials=n_trials)
@@ -401,7 +413,7 @@ def run_one_precision(precision_name: str, layer_cls, n_trials: int):
 
 
 if __name__ == "__main__":
-    TRIALS = 3
+    TRIALS = 50
     tokenizer_checkpoint = "bert-base-uncased"
     dataset_name = "imdb"
 
@@ -420,11 +432,17 @@ if __name__ == "__main__":
     curves = {}
     studies = {}
 
-    for pname, pcls in PRECISION_CLASSES.items():
-        print(f"\n==== Running precision: {pname} ====")
-        best_curve, study = run_one_precision(pname, pcls, TRIALS)
-        curves[pname] = best_curve
-        studies[pname] = study
+    print(f"\n==== Running mixed precision ====")
+    best_curve, study = run_mixed_precisions(TRIALS)
+    curves["mixed"] = best_curve
+    studies["mixed"] = study
+    #save best model from study
+    best_trial = study.best_trial
+    best_model = construct_model(best_trial)
+    torch.save(best_model.state_dict(), "best_mixed_precision_model.pt")
+    # print model architecture to text file
+    with open("best_mixed_precision_model_architecture.txt", "w") as f:
+        print(best_model, file=f)
 
     max_len = max(len(c) for c in curves.values() if len(c) > 0)
 
