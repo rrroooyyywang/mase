@@ -6,7 +6,7 @@
 
 - **Pytorch native**: every operator in the FX graph correlates to a Python object or callable, meaning we can transform and optimize the graph, then simply regenerate the Python code required to run it. Unlike ONNX, there is no requirement for a dedicated runtime: all you need is Python.
 ### Bert mase graph output:
-[link to the graph](../bert-base-uncased.svg)
+[link to the graph](./img/bert-base-uncased.svg)
 
 ### fx node types:
 - **placeholder**: represents a function input, which can be a `Tensor` or another Python object.
@@ -33,16 +33,19 @@ method_relu = random_tensor.relu()
 module_relu = torch.nn.ReLU()(random_tensor)
 ```
 
-### Task: Delete the call to `replace_all_uses_with` to verify that FX will report a RuntimeError.
+### Task: 
+Delete the call to `replace_all_uses_with` to verify that FX will report a RuntimeError.
 **Result:**
 ![](./img/lab0_task1.png)
 
-### Task: Remove the `attention_mask` and `labels` arguments from the `hf_input_names` list and re-run the following cell. Use `mg.draw()` to visualize the graph in each case. Can you see any changes in the graph topology? Can you explain why this happens?
+### Task: 
+Remove the `attention_mask` and `labels` arguments from the `hf_input_names` list and re-run the following cell. Use `mg.draw()` to visualize the graph in each case. Can you see any changes in the graph topology? Can you explain why this happens?
 
 [click for full figure: 1 inputs](./img/lab0_tutorial_2_task_1_removed.svg)
+
 [click for full figure: 3 inputs](./img/lab0_tutorial_2_task_1_full.svg)
 
-**Compering:**
+**Answer:**
 ![](./img/laba0_tutorial_2_task_1_compare_1.png)
 The aboved figure shows the 3 inputs graph will include a crossentropy module which allow the modole to output the loss by passing the `labels`.
 
@@ -55,14 +58,17 @@ Therefore, I know that 3 input is required for traning, but 1 input is for infer
 ### Task 1:
 In Tutorial 3, you quantized every Linear layer in the model to the provided configuration. Now, explore a range of fixed point widths from 4 to 32.
 
-- a: Plot a figure where the x-axis is the fixed point width and the y-axis is the highest achieved accuracy on the IMDb dataset, following the procedure in Tutorial 3.
+#### Section a
+Plot a figure where the x-axis is the fixed point width and the y-axis is the highest achieved accuracy on the IMDb dataset, following the procedure in Tutorial 3.
 
 ![](./img/lab1_tutorial_3_task_1_a.png)
 
-- b. Plot separate curves for PTQ and QAT at each precision to show the effect of post-quantization finetuning.
+#### Section b
+Plot separate curves for PTQ and QAT at each precision to show the effect of post-quantization finetuning.
 
 ![](./img/lab1_tutorial_3_task_1_b.png)
 
+This done by this python script:
 ```python
 import matplotlib.pyplot as plt
 import chop.passes as passes
@@ -143,11 +149,17 @@ def quant_train_sweep(int_widths=range(4, 32),frac_rule=lambda w: w // 2,qat_epo
 ### Task 2:
 Take your best obtained model from Task 1 and rerun the pruning procedure, this time varying the sparsity from 0.1 to 0.9.
 
-- a: Plot a figure where the x-axis is the sparsity and the y-axis is the highest achieved accuracy on the IMDb dataset, following the procedure in Tutorial 4.
+#### Section a
+Plot a figure where the x-axis is the sparsity and the y-axis is the highest achieved accuracy on the IMDb dataset, following the procedure in Tutorial 4.
 ![](./img/lab1_tutorial_4_task_2_a.png)
-- b: Plot separate curves for Random and L1-Norm methods to evaluate the effect of different pruning strategies.
-![](./img/lab1_tutorial_4_task_2_b_2.png)
 
+#### Section b
+Plot separate curves for Random and L1-Norm methods to evaluate the effect of different pruning strategies.
+**Result:**
+![](./img/lab1_tutorial_4_task_2_b_2.png)
+We observed that the random pruning reduce the accuracy a lot without finetuning. But after finetuning the accuracy increase a lot but it will not exceed L1-pruning with finetuning.
+
+The L1-pruning has the best result overall. Even without finetuning the accuracy dose not drop a lot, only when sparsity higher than 0.5, i.e. prune half of the weights. And L1-pruning can retain accuracy a lot after finetuning.
 ```python
 import matplotlib.pyplot as plt
 import torch
