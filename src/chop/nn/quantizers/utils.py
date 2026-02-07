@@ -153,19 +153,22 @@ class BinaryZeroScaled(InplaceFunction):
     """
 
     @staticmethod
-    def alpha(tensor):  # determine batch means
-        absvalue = tensor.abs()
-        alpha = absvalue.mean(dim=(1, 2, 3), keepdims=True)
-        return alpha.view(-1, 1)
-
+    def alpha(input: torch.Tensor):
+        absvalue = input.abs()
+        if absvalue.ndim <= 1:
+            return absvalue.mean().view(1)
+        reduce_dims = tuple(range(1, absvalue.ndim))
+        return absvalue.mean(dim=reduce_dims, keepdim=True)
+    
     @staticmethod
     def forward(ctx, input, _threshold):
         alpha = BinaryZeroScaled.alpha(input)
-
         pos_one = torch.where(input > 0, 1.0, 0.0)
-        output = pos_one * alpha.view(-1, 1, 1, 1).expand(
-            -1, input.size()[1], input.size()[2], input.size()[3]
-        )
+
+        if alpha.ndim == 1:
+            alpha = alpha.view(alpha.size(0), *([1] * (input.ndim - 1)))
+            
+        output = pos_one * alpha
         return output
 
     @staticmethod
